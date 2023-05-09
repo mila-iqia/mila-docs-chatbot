@@ -11,8 +11,13 @@ from huggingface_hub import hf_hub_download
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
+# auth information
+username = os.getenv("MILA_USERNAME")
+password = os.getenv("MILA_PASSWORD")
+
 # set openAI creds
 openai.api_key = os.getenv("OPENAI_API_KEY")
+
 
 # hf hub information
 REPO_ID = "jerpint/buster-cluster-dataset"

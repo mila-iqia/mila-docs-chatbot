@@ -1,14 +1,24 @@
+import logging
+
 import gradio as gr
 import pandas as pd
 from buster.busterbot import Buster
-from buster.retriever import Retriever
-from buster.utils import get_retriever_from_extension
 
 import cfg
 
-# initialize buster with the config in config.py (adapt to your needs) ...
-# retriever: cfg.
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
+# initialize buster with the config in cfg.py (adapt to your needs) ...
 buster: Buster = Buster(cfg=cfg.buster_cfg, retriever=cfg.retriever)
+
+
+def check_auth(username: str, password: str) -> bool:
+    """Basic auth, only supports a single user."""
+    # TODO: update to better auth
+    is_auth = username == cfg.username and password == cfg.password
+    logger.info(f"Log-in attempted. {is_auth=}")
+    return is_auth
 
 
 def format_sources(matched_documents: pd.DataFrame) -> str:
@@ -98,4 +108,4 @@ with block:
     ).then(add_sources, inputs=[chatbot, response], outputs=[chatbot])
 
 block.queue(concurrency_count=16)
-block.launch(debug=True, share=False)
+block.launch(debug=True, share=False, auth=check_auth, auth_message="Request access from an admin.")
