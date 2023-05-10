@@ -3,6 +3,9 @@ import logging
 import gradio as gr
 import pandas as pd
 from buster.busterbot import Buster
+from gradio.utils import highlight_code
+from markdown_it import MarkdownIt
+from mdit_py_plugins.footnote.index import footnote_plugin
 
 import cfg
 
@@ -11,10 +14,6 @@ logging.basicConfig(level=logging.INFO)
 
 # initialize buster with the config in cfg.py (adapt to your needs) ...
 buster: Buster = Buster(cfg=cfg.buster_cfg, retriever=cfg.retriever)
-
-from gradio.utils import highlight_code
-from markdown_it import MarkdownIt
-from mdit_py_plugins.footnote.index import footnote_plugin
 
 
 def get_markdown_parser() -> MarkdownIt:
