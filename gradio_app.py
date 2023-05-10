@@ -3,6 +3,9 @@ import logging
 import gradio as gr
 import pandas as pd
 from buster.busterbot import Buster
+from gradio.utils import highlight_code
+from markdown_it import MarkdownIt
+from mdit_py_plugins.footnote.index import footnote_plugin
 
 import cfg
 
@@ -11,6 +14,35 @@ logging.basicConfig(level=logging.INFO)
 
 # initialize buster with the config in cfg.py (adapt to your needs) ...
 buster: Buster = Buster(cfg=cfg.buster_cfg, retriever=cfg.retriever)
+
+
+def get_markdown_parser() -> MarkdownIt:
+    """Modified method of https://github.com/gradio-app/gradio/blob/main/gradio/utils.py#L42
+
+    Removes the dollarmath_plugin to render Latex equations.
+    """
+    md = (
+        MarkdownIt(
+            "js-default",
+            {
+                "linkify": True,
+                "typographer": True,
+                "html": True,
+                "highlight": highlight_code,
+            },
+        )
+        # .use(dollarmath_plugin, renderer=tex2svg, allow_digits=False)
+        .use(footnote_plugin).enable("table")
+    )
+
+    # Add target="_blank" to all links. Taken from MarkdownIt docs: https://github.com/executablebooks/markdown-it-py/blob/master/docs/architecture.md
+    def render_blank_link(self, tokens, idx, options, env):
+        tokens[idx].attrSet("target", "_blank")
+        return self.renderToken(tokens, idx, options, env)
+
+    md.add_render_rule("link_open", render_blank_link)
+
+    return md
 
 
 def check_auth(username: str, password: str) -> bool:
@@ -76,6 +108,7 @@ with block:
         gr.Markdown("<h3><center>Buster 🤖: A Question-Answering Bot for your documentation</center></h3>")
 
     chatbot = gr.Chatbot()
+    chatbot.md = get_markdown_parser()  # Workaround to disable latex rendering
 
     with gr.Row():
         question = gr.Textbox(
