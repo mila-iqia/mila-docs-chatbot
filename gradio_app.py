@@ -12,9 +12,9 @@ logging.basicConfig(level=logging.INFO)
 # initialize buster with the config in cfg.py (adapt to your needs) ...
 buster: Buster = Buster(cfg=cfg.buster_cfg, retriever=cfg.retriever)
 
+from gradio.utils import highlight_code
 from markdown_it import MarkdownIt
 from mdit_py_plugins.footnote.index import footnote_plugin
-from gradio.utils import highlight_code
 
 
 def get_markdown_parser() -> MarkdownIt:
