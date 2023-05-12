@@ -60,7 +60,9 @@ def format_sources(matched_documents: pd.DataFrame) -> str:
     sourced_answer_template: str = (
         """📝 Here are the sources I used to answer your question:<br>""" """{sources}<br><br>""" """{footnote}"""
     )
-    source_template: str = """[🔗 {source.title}]({source.url}), relevance: {source.similarity:2.1f} %"""
+    source_template: str = (
+        """[🔗 {source.title}]({source.url}), relevance to answer: {source.similarity_to_answer:2.1f} %"""
+    )
 
     matched_documents.similarity = matched_documents.similarity * 100
     sources = "<br>".join([source_template.format(source=source) for _, source in matched_documents.iterrows()])
