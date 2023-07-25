@@ -3,9 +3,13 @@ import os
 from dataclasses import dataclass
 
 import openai
-from buster.busterbot import BusterConfig
-from buster.retriever import Retriever
-from buster.utils import get_retriever_from_extension
+from buster.busterbot import Buster, BusterConfig
+from buster.completers import ChatGPTCompleter, DocumentAnswerer
+from buster.formatters.documents import DocumentsFormatter
+from buster.formatters.prompts import PromptFormatter
+from buster.retriever import Retriever, SQLiteRetriever
+from buster.tokenizers import GPTTokenizer
+from buster.validators import QuestionAnswerValidator, Validator
 from huggingface_hub import hf_hub_download
 
 logger = logging.getLogger(__name__)
@@ -20,7 +24,7 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 
 
 # hf hub information
-REPO_ID = "jerpint/buster-cluster-dataset"
+REPO_ID = os.environ.get("HUB_DATASET_ID")
 DB_FILE = "documents_mila.db"
 HUB_TOKEN = os.environ.get("HUB_TOKEN")
 # download the documents.db hosted on the dataset space
@@ -35,24 +39,46 @@ hf_hub_download(
 )
 logger.info("Downloaded.")
 
-# setup retriever
-retriever: Retriever = get_retriever_from_extension(DB_FILE)(DB_FILE)
-
-documents_filepath = "./documents.db"
 buster_cfg = BusterConfig(
     validator_cfg={
-        "unknown_prompt": "I'm sorry, but I am an AI language model trained to assist with questions related to the Mila Cluster. I cannot answer that question as it is not relevant to the cluster or its usage. Is there anything else I can assist you with?",
+        "unknown_response_templates": [
+            "I'm sorry, but I am an AI language model trained to assist with questions related to the Mila Cluster. I cannot answer that question as it is not relevant to the cluster or its usage. Is there anything else I can assist you with?",
+        ],
         "unknown_threshold": 0.85,
         "embedding_model": "text-embedding-ada-002",
+        "use_reranking": True,
+        "check_question_prompt": """You are an chatbot answering questions about the mila cluster, a compute infrastructure.
+
+Your job is to determine wether or not a question is valid, and should be answered.
+More general questions are not considered valid, even if you might know the response.
+A user will submit a question. Respond 'true' if it is valid, respond 'false' if it is invalid.
+
+For example:
+
+Q: How can I run a job with 2 GPUs?
+true
+
+Q: What is the meaning of life?
+false
+
+A user will submit a question. Respond 'true' if it is valid, respond 'false' if it is invalid.""",
+        "completion_kwargs": {
+            "model": "gpt-3.5-turbo",
+            "stream": False,
+            "temperature": 0,
+        },
     },
     retriever_cfg={
+        "db_path": DB_FILE,
         "top_k": 3,
         "thresh": 0.7,
         "max_tokens": 2000,
         "embedding_model": "text-embedding-ada-002",
     },
+    documents_answerer_cfg={
+        "no_documents_message": "No documents are available for this question.",
+    },
     completion_cfg={
-        "name": "ChatGPT",
         "completion_kwargs": {
             "model": "gpt-3.5-turbo",
             "stream": True,
@@ -62,9 +88,13 @@ buster_cfg = BusterConfig(
     tokenizer_cfg={
         "model_name": "gpt-3.5-turbo",
     },
-    prompt_cfg={
+    documents_formatter_cfg={
         "max_tokens": 3500,
-        "text_before_documents": (
+        "formatter": "{content}",
+    },
+    prompt_formatter_cfg={
+        "max_tokens": 3500,
+        "text_before_docs": (
             "You are a chatbot assistant answering technical questions about the Mila Cluster, a GPU cluster for Mila Students."
             "You are a chatbot assistant answering technical questions about the Mila Cluster."
             "You can only respond to a question if the content necessary to answer the question is contained in the following provided documentation."
@@ -75,7 +105,7 @@ buster_cfg = BusterConfig(
             "Here is the documentation: "
             "<DOCUMENTS> "
         ),
-        "text_before_prompt": (
+        "text_after_docs": (
             "<\DOCUMENTS>\n"
             "REMEMBER:\n"
             "You are a chatbot assistant answering technical questions about the Mila Cluster, a GPU cluster for Mila Students."
@@ -92,5 +122,16 @@ buster_cfg = BusterConfig(
             "Now answer the following question:\n"
         ),
     },
-    document_source="mila",
 )
+
+# initialize buster with the config in cfg.py (adapt to your needs) ...
+retriever: Retriever = SQLiteRetriever(**buster_cfg.retriever_cfg)
+tokenizer = GPTTokenizer(**buster_cfg.tokenizer_cfg)
+document_answerer: DocumentAnswerer = DocumentAnswerer(
+    completer=ChatGPTCompleter(**buster_cfg.completion_cfg),
+    documents_formatter=DocumentsFormatter(tokenizer=tokenizer, **buster_cfg.documents_formatter_cfg),
+    prompt_formatter=PromptFormatter(tokenizer=tokenizer, **buster_cfg.prompt_formatter_cfg),
+    **buster_cfg.documents_answerer_cfg,
+)
+validator: Validator = QuestionAnswerValidator(**buster_cfg.validator_cfg)
+buster: Buster = Buster(retriever=retriever, document_answerer=document_answerer, validator=validator)
