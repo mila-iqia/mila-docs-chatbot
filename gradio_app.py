@@ -2,10 +2,6 @@ import logging
 
 import gradio as gr
 import pandas as pd
-from buster.busterbot import Buster
-from gradio.utils import highlight_code
-from markdown_it import MarkdownIt
-from mdit_py_plugins.footnote.index import footnote_plugin
 
 import cfg
 
@@ -13,36 +9,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 # initialize buster with the config in cfg.py (adapt to your needs) ...
-buster: Buster = Buster(cfg=cfg.buster_cfg, retriever=cfg.retriever)
-
-
-def get_markdown_parser() -> MarkdownIt:
-    """Modified method of https://github.com/gradio-app/gradio/blob/main/gradio/utils.py#L42
-
-    Removes the dollarmath_plugin to render Latex equations.
-    """
-    md = (
-        MarkdownIt(
-            "js-default",
-            {
-                "linkify": True,
-                "typographer": True,
-                "html": True,
-                "highlight": highlight_code,
-            },
-        )
-        # .use(dollarmath_plugin, renderer=tex2svg, allow_digits=False)
-        .use(footnote_plugin).enable("table")
-    )
-
-    # Add target="_blank" to all links. Taken from MarkdownIt docs: https://github.com/executablebooks/markdown-it-py/blob/master/docs/architecture.md
-    def render_blank_link(self, tokens, idx, options, env):
-        tokens[idx].attrSet("target", "_blank")
-        return self.renderToken(tokens, idx, options, env)
-
-    md.add_render_rule("link_open", render_blank_link)
-
-    return md
+buster = cfg.buster
 
 
 def check_auth(username: str, password: str) -> bool:
@@ -57,24 +24,22 @@ def format_sources(matched_documents: pd.DataFrame) -> str:
     if len(matched_documents) == 0:
         return ""
 
-    sourced_answer_template: str = (
-        """📝 Here are the sources I used to answer your question:<br>""" """{sources}<br><br>""" """{footnote}"""
-    )
-    source_template: str = """[🔗 {source.title}]({source.url}), relevance: {source.similarity:2.1f} %"""
+    matched_documents.similarity_to_answer = matched_documents.similarity_to_answer * 100
 
-    matched_documents.similarity = matched_documents.similarity * 100
-    sources = "<br>".join([source_template.format(source=source) for _, source in matched_documents.iterrows()])
+    documents_answer_template: str = (
+        "📝 Here are the sources I used to answer your question:\n\n{documents}\n\n{footnote}"
+    )
+    document_template: str = "[🔗 {document.title}]({document.url}), relevance: {document.similarity_to_answer:2.1f} %"
+
+    documents = "\n".join([document_template.format(document=document) for _, document in matched_documents.iterrows()])
     footnote: str = "I'm a bot 🤖 and not always perfect."
 
-    return sourced_answer_template.format(sources=sources, footnote=footnote)
+    return documents_answer_template.format(documents=documents, footnote=footnote)
 
 
-def add_sources(history, response):
-    documents_relevant = response.documents_relevant
-
-    if documents_relevant:
-        # add sources
-        formatted_sources = format_sources(response.matched_documents)
+def add_sources(history, completion):
+    if completion.answer_relevant:
+        formatted_sources = format_sources(completion.matched_documents)
         history.append([None, formatted_sources])
 
     return history
@@ -88,14 +53,14 @@ def user(user_input, history):
 def chat(history):
     user_input = history[-1][0]
 
-    response = buster.process_input(user_input)
+    completion = buster.process_input(user_input)
 
     history[-1][1] = ""
 
-    for token in response.completion.completor:
+    for token in completion.answer_generator:
         history[-1][1] += token
 
-        yield history, response
+        yield history, completion
 
 
 block = gr.Blocks(
@@ -108,7 +73,6 @@ with block:
         gr.Markdown("<h3><center>Buster 🤖: A Question-Answering Bot for your documentation</center></h3>")
 
     chatbot = gr.Chatbot()
-    chatbot.md = get_markdown_parser()  # Workaround to disable latex rendering
 
     with gr.Row():
         question = gr.Textbox(
@@ -116,7 +80,7 @@ with block:
             placeholder="Ask a question to AI stackoverflow here...",
             lines=1,
         )
-        submit = gr.Button(value="Send", variant="secondary").style(full_width=False)
+        submit = gr.Button(value="Send", variant="secondary")
 
     examples = gr.Examples(
         examples=[
