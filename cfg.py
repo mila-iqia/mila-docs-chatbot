@@ -24,7 +24,7 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 
 
 # hf hub information
-REPO_ID = "jerpint/buster-cluster-dataset"
+REPO_ID = os.environ.get("HUB_DATASET_ID")
 DB_FILE = "documents_mila.db"
 HUB_TOKEN = os.environ.get("HUB_TOKEN")
 # download the documents.db hosted on the dataset space
