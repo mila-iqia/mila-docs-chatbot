@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 # initialize buster with the config in cfg.py (adapt to your needs) ...
-buster = cfg.buster
+buster = cfg.setup_buster(cfg.buster_cfg)
 
 
 def check_auth(username: str, password: str) -> bool:
